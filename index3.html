@@ -90,7 +90,7 @@ const url = 'https://api.allorigins.win/raw?url=https://betaapi.zhitongcaijing.c
               </div>
             `;
             container.innerHTML += html;
-             alert（"1"）;
+            alert("1");
           });
 
           // 添加点击展开/收起事件
@@ -101,7 +101,7 @@ const url = 'https://api.allorigins.win/raw?url=https://betaapi.zhitongcaijing.c
           });
         })
         .catch(err => {
-         alert（"2"）;
+        alert("2");
           console.error(err);
           document.getElementById('news-list').innerText = '数据加载失败，请检查接口地址或跨域问题。';
         });
