@@ -65,10 +65,10 @@
   <div id="news-list">加载中...</div>
 
   <script>
-    const url = 'https://api.allorigins.win/raw?url=https://betaapi.zhitongcaijing.com/Content/immediatelyList';
-
+   // const url = 'https://api.allorigins.win/raw?url=https://betaapi.zhitongcaijing.com/Content/immediatelyList';
+const url = 'https://api.allorigins.win/raw?url=https://betaapi.zhitongcaijing.com/Content/immediatelyList&_ts=' + Date.now();
     function loadNews() {
-        alert("每5秒刷新一次数据...");
+      
 
       fetch(url)
         .then(res => res.json())
@@ -100,6 +100,7 @@
           });
         })
         .catch(err => {
+          
           console.error(err);
           document.getElementById('news-list').innerText = '数据加载失败，请检查接口地址或跨域问题。';
         });
