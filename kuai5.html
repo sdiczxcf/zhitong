@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>快讯展示</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 10px;
+      background-color: #121212;
+      color: #f1f1f1;
+    }
+
+    h2 {
+      color: #ffffff;
+    }
+
+    #news-list .item {
+      border-bottom: 1px solid #333;
+      padding: 10px 0;
+    }
+
+    .time {
+      font-size: 0.9em;
+      color: #999;
+      margin-bottom: 4px;
+    }
+
+    .title {
+      font-weight: bold;
+      font-size: 1em;
+      color: #ffffff; /* 改为白色 */
+      margin-bottom: 4px;
+    }
+
+    .content {
+      font-size: 1em;
+      line-height: 1.5;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .content.expanded {
+      -webkit-line-clamp: unset;
+    }
+
+    a {
+      color: #81d4fa;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+      color: #4fc3f7;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>快讯列表</h2>
+  <div id="news-list">加载中...</div>
+
+<script>
+  function loadNews() {
+ 
+    const url = 'https://api.allorigins.win/raw?url=https%3A%2F%2Fapi.zhitongcaijing.com%2Fv26%2Fsearch%2Fget_all.html%3Faccess_token%3D864af5d6a768f9267c7ddaeb15ba9504%26customized%3D1%26dev%3D0%26keyword%3D%2520%26mainland%3D1%26style%3Dnight%26token%3Db35da9d591f5bedadc9c0d622025f5e37f1b020c%26tradition_chinese%3D0%26version%3D4.9.7';
+
+    fetch(url)
+      .then(res => res.json())
+      .then(json => {
+        const allLists = json.data?.list || [];
+
+        const flashNews = allLists.find(item => item.list_type === 'immediately');
+        const newsList = flashNews?.list || [];
+
+        const container = document.getElementById('news-list');
+        container.innerHTML = '';
+
+        newsList.forEach(item => {
+          const time = item.create_time_desc || '';
+          const title = item.title || '';
+          const content = item.content || '';
+
+          const html = `
+            <div class="item">
+              <div class="time">${time}</div>
+              <div class="title">${title}</div>
+              <div class="content">${content}</div>
+            </div>
+          `;
+          container.innerHTML += html;
+        });
+
+        container.querySelectorAll('.content').forEach(div => {
+          div.addEventListener('click', () => {
+            div.classList.toggle('expanded');
+          });
+        });
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById('news-list').innerText = '数据加载失败，请检查接口地址或跨域问题。';
+      });
+  }
+
+  loadNews();
+  setInterval(loadNews, 5000);
+</script>
+
+</body>
+</html>
