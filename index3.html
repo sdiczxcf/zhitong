@@ -68,6 +68,8 @@
     const url = 'https://api.allorigins.win/raw?url=https://betaapi.zhitongcaijing.com/Content/immediatelyList';
 
     function loadNews() {
+        console.log("每5秒刷新一次数据...");
+
       fetch(url)
         .then(res => res.json())
         .then(json => {
