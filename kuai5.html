@@ -102,6 +102,7 @@
         });
       })
       .catch(err => {
+             alert("2");
         console.error(err);
         document.getElementById('news-list').innerText = '数据加载失败，请检查接口地址或跨域问题。';
       });
