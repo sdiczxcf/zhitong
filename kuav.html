@@ -20,30 +20,36 @@ h2 { color: #fff; }
 <div id="news-list">加载中...</div>
 
 <script>
-let previousNewsIds = new Set();  // 保存已存在新闻 ID
+let previousNewsIds = new Set();
 let ttsQueue = [];
 let isSpeaking = false;
 let autoReadEnabled = false;
-let preferredVoice = null; // 缓存首选语音
+let voicesReady = false;
+let preferredVoice = null;
+const preferredVoiceName = "Sandy"; // 首选语音名
 
-const preferredVoiceName = "Sandy"; // 优先语音名
-
-// 获取首选语音，等待 voiceschanged
+// 初始化语音
 function initVoices() {
   const voices = speechSynthesis.getVoices();
   preferredVoice = voices.find(v => v.name === preferredVoiceName && v.lang === "zh-CN") ||
                    voices.find(v => v.lang === "zh-CN") ||
                    voices.find(v => v.lang.startsWith("zh")) ||
                    voices[0];
+  voicesReady = true;
+
+  // 如果用户已点击页面，启动加载新闻
+  if (autoReadEnabled) {
+    loadNews();
+  }
 }
 
-// Safari/iOS 语音列表加载完成事件
+// Safari/iOS voiceschanged 事件
 speechSynthesis.onvoiceschanged = initVoices;
 
-// TTS 播报函数
+// TTS 播报
 function speakText(text) {
   if (!('speechSynthesis' in window)) return;
-  if (!preferredVoice) return; // 如果语音还没准备好，先不播
+  if (!preferredVoice || !voicesReady) return;
   const utter = new SpeechSynthesisUtterance(text);
   utter.voice = preferredVoice;
   utter.rate = 1;
@@ -96,7 +102,6 @@ async function loadNews() {
     const flashNews = allLists.find(item => item.list_type === 'immediately');
     const newsList = flashNews?.list || [];
 
-    // 找出新增新闻
     const newNews = newsList.filter(item => {
       const id = item.id || item.create_time_desc;
       return !previousNewsIds.has(id);
@@ -110,7 +115,6 @@ async function loadNews() {
 
       renderNewNews(newNews);
 
-      // 自动朗读新增新闻
       if (autoReadEnabled) {
         newNews.forEach(item => {
           const text = (item.title || '[无标题]') + '。' + (item.content || '');
@@ -123,15 +127,19 @@ async function loadNews() {
   }
 }
 
-// 首次用户点击页面启动朗读
+// 用户点击启动朗读
 function enableAutoRead() {
   if (!autoReadEnabled) {
     autoReadEnabled = true;
     document.getElementById('start-tips').style.display = 'none';
-    // 激活一次 TTS
+    // 用户点击触发一次空朗读，激活 TTS
     const testUtter = new SpeechSynthesisUtterance('');
     speechSynthesis.speak(testUtter);
-    loadNews();
+
+    // 如果 voices 已准备好，立即加载新闻
+    if (voicesReady) {
+      loadNews();
+    }
   }
 }
 
