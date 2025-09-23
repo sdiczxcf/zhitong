@@ -2,70 +2,143 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title>快讯展示</title>
+  <title>快讯展示（自动朗读）</title>
   <style>
-    body {
-      font-family: "Arial", sans-serif;
-      padding: 20px;
-      background-color: #f4f4f4;
-    }
-    .item {
-      background: #fff;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 15px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.1);
-    }
-    .time {
-      color: #888;
-      font-size: 14px;
-    }
-    .title {
-      font-size: 16px;
-      font-weight: bold;
-      margin: 8px 0 4px;
-    }
-    .content {
-      font-size: 15px;
-      line-height: 1.6;
-    }
+    body { font-family: sans-serif; padding: 10px; background-color: #121212; color: #f1f1f1; }
+    h2 { color: #fff; }
+    #news-list .item { border-bottom: 1px solid #333; padding: 10px 0; }
+    .time { font-size: 0.9em; color: #999; margin-bottom: 4px; }
+    .title { font-weight: bold; font-size: 1em; color: #fff; margin-bottom: 4px; }
+    .content { font-size: 1em; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; transition: all 0.3s ease; }
+    .content.expanded { -webkit-line-clamp: unset; }
+    #start-tips { color:#81d4fa; font-size:1em; margin-bottom:10px; cursor:pointer; }
   </style>
 </head>
 <body>
+<h2>快讯列表</h2>
+<div id="start-tips">点击此区域或页面任意位置启动自动朗读</div>
+<div id="news-list">加载中...</div>
 
-  <h2>快讯列表</h2>
-  <div id="news-list">加载中...</div>
+<script>
+let previousNewsIds = [];  // 上一次新闻 ID 列表
+let ttsQueue = [];         // 朗读队列
+let isSpeaking = false;
+let autoReadEnabled = false; // 是否允许自动朗读
 
-  <script>
-   const url = 'https://api.allorigins.win/raw?url=https://betaapi.zhitongcaijing.com/Content/immediatelyList';
+// TTS 播报函数
+function speakText(text) {
+  if (!('speechSynthesis' in window)) return;
+  const utter = new SpeechSynthesisUtterance(text);
 
-    fetch(url)
-      .then(res => res.json())
-      .then(json => {
-        const newsList = json.data?.list?.[0]?.list || [];
-        const container = document.getElementById('news-list');
-        container.innerHTML = '';
+  // 尝试选择中文语音
+  const voices = speechSynthesis.getVoices();
+  const zhVoice = voices.find(v => /zh|cn/i.test(v.lang));
+  if (zhVoice) utter.voice = zhVoice;
 
+  utter.rate = 1;
+  utter.pitch = 1;
+
+  utter.onend = () => {
+    isSpeaking = false;
+    processQueue();
+  };
+  utter.onerror = () => {
+    isSpeaking = false;
+    processQueue();
+  };
+
+  isSpeaking = true;
+  speechSynthesis.speak(utter);
+}
+
+// 队列处理
+function enqueueText(text) {
+  ttsQueue.push(text);
+  processQueue();
+}
+
+function processQueue() {
+  if (isSpeaking || ttsQueue.length === 0) return;
+  const text = ttsQueue.shift();
+  speakText(text);
+}
+
+// 渲染新闻到页面
+function renderNews(newsList) {
+  const container = document.getElementById('news-list');
+  container.innerHTML = '';
+
+  newsList.forEach(item => {
+    const id = item.id || item.create_time_desc || Math.random();
+    const time = item.create_time_desc || '';
+    const title = item.title?.trim() || '[无标题]';
+    const content = item.content || '';
+
+    const html = `
+      <div class="item" data-id="${id}">
+        <div class="time">${time}</div>
+        <div class="title">${title}</div>
+        <div class="content">${content}</div>
+      </div>
+    `;
+    container.innerHTML += html;
+  });
+
+  // 点击内容可展开
+  container.querySelectorAll('.content').forEach(div => {
+    div.addEventListener('click', () => div.classList.toggle('expanded'));
+  });
+}
+
+// 获取最新新闻
+async function loadNews() {
+  const url = 'https://api.allorigins.win/raw?url=https%3A%2F%2Fapi.zhitongcaijing.com%2Fv26%2Fsearch%2Fget_all.html%3Faccess_token%3D864af5d6a768f9267c7ddaeb15ba9504%26customized%3D1%26dev%3D0%26keyword%3D%2520%26mainland%3D1%26style%3Dnight%26token%3Db35da9d591f5bedadc9c0d622025f5e37f1b020c%26tradition_chinese%3D0%26version%3D4.9.7&_ts=' + Date.now();
+
+  try {
+    const res = await fetch(url, { cache: 'no-store' });
+    const json = await res.json();
+    const allLists = json.data?.list || [];
+    const flashNews = allLists.find(item => item.list_type === 'immediately');
+    const newsList = flashNews?.list || [];
+
+    // 判断是否有新新闻
+    const currentIds = newsList.map(item => item.id || item.create_time_desc);
+    const isNew = JSON.stringify(currentIds) !== JSON.stringify(previousNewsIds);
+
+    if (isNew && newsList.length > 0) {
+      previousNewsIds = currentIds;
+      renderNews(newsList);
+
+      // 只有用户允许后才自动朗读
+      if (autoReadEnabled) {
         newsList.forEach(item => {
-          const time = item.create_time_desc || '';
-          const title = item.title || '';
-          const content = item.content || '';
-
-          const html = `
-            <div class="item">
-              <div class="time">${time}</div>
-              <div class="title">${title}</div>
-              <div class="content">${content}</div>
-            </div>
-          `;
-          container.innerHTML += html;
+          const text = (item.title || '[无标题]') + '。' + (item.content || '');
+          enqueueText(text);
         });
-      })
-      .catch(err => {
-        console.error(err);
-        document.getElementById('news-list').innerText = '数据加载失败，请检查接口地址或跨域问题。';
-      });
-  </script>
+      }
+    }
+  } catch (err) {
+    console.error('加载失败:', err);
+  }
+}
 
+// 首次用户点击页面启动朗读
+function enableAutoRead() {
+  if (!autoReadEnabled) {
+    autoReadEnabled = true;
+    document.getElementById('start-tips').style.display = 'none';
+    // 触发一次加载，让当前新闻立即朗读
+    loadNews();
+  }
+}
+
+// 绑定用户点击事件
+document.getElementById('start-tips').addEventListener('click', enableAutoRead);
+document.body.addEventListener('click', enableAutoRead, { once: true });
+
+// 初次加载 & 定时刷新
+loadNews();
+setInterval(loadNews, 5000);
+</script>
 </body>
 </html>
