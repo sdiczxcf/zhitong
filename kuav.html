@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>快讯展示（增量朗读）</title>
+<style>
+body { font-family: sans-serif; padding: 10px; background-color: #121212; color: #f1f1f1; }
+h2 { color: #fff; }
+#news-list .item { border-bottom: 1px solid #333; padding: 10px 0; }
+.time { font-size: 0.9em; color: #999; margin-bottom: 4px; }
+.title { font-weight: bold; font-size: 1em; color: #fff; margin-bottom: 4px; }
+.content { font-size: 1em; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; transition: all 0.3s ease; }
+.content.expanded { -webkit-line-clamp: unset; }
+#start-tips { color:#81d4fa; font-size:1em; margin-bottom:10px; cursor:pointer; }
+</style>
+</head>
+<body>
+<h2>快讯列表</h2>
+<div id="start-tips">点击此区域或页面任意位置启动自动朗读</div>
+<div id="news-list">加载中...</div>
+
+<script>
+let previousNewsIds = new Set();  // 用 Set 保存已存在新闻 ID
+let ttsQueue = [];
+let isSpeaking = false;
+let autoReadEnabled = false;
+
+// ========== 指定语音逻辑 ========== //
+const preferredVoiceName = "Ting-Ting"; // 你想优先用的语音名
+
+function getPreferredChineseVoice() {
+  const voices = speechSynthesis.getVoices();
+
+  // 1. 精确匹配首选语音
+  let voice = voices.find(v => v.name === preferredVoiceName && v.lang === "zh-CN");
+  if (voice) return voice;
+
+  // 2. fallback 普通话 zh-CN
+  voice = voices.find(v => v.lang === "zh-CN");
+  if (voice) return voice;
+
+  // 3. fallback 其他中文
+  voice = voices.find(v => v.lang.startsWith("zh"));
+  if (voice) return voice;
+
+  // 4. fallback 任何语音
+  return voices[0];
+}
+
+// TTS 播报函数
+function speakText(text) {
+  if (!('speechSynthesis' in window)) return;
+  const utter = new SpeechSynthesisUtterance(text);
+
+  // 指定语音
+  const voice = getPreferredChineseVoice();
+  if (voice) utter.voice = voice;
+
+  utter.rate = 1;
+  utter.pitch = 1;
+  utter.onend = () => { isSpeaking = false; processQueue(); };
+  utter.onerror = () => { isSpeaking = false; processQueue(); };
+  isSpeaking = true;
+  speechSynthesis.speak(utter);
+}
+
+// 队列处理
+function enqueueText(text) {
+  ttsQueue.push(text);
+  processQueue();
+}
+function processQueue() {
+  if (isSpeaking || ttsQueue.length === 0) return;
+  const text = ttsQueue.shift();
+  speakText(text);
+}
+
+// 渲染新增新闻
+function renderNewNews(newsItems) {
+  const container = document.getElementById('news-list');
+  newsItems.reverse().forEach(item => {  // 新增新闻按顺序插入顶部
+    const id = item.id || item.create_time_desc || Math.random();
+    const time = item.create_time_desc || '';
+    const title = item.title?.trim() || '[无标题]';
+    const content = item.content || '';
+    const html = document.createElement('div');
+    html.className = 'item';
+    html.dataset.id = id;
+    html.innerHTML = `
+      <div class="time">${time}</div>
+      <div class="title">${title}</div>
+      <div class="content">${content}</div>
+    `;
+    html.querySelector('.content').addEventListener('click', () => html.querySelector('.content').classList.toggle('expanded'));
+    container.insertBefore(html, container.firstChild); // 插入顶部
+  });
+}
+
+// 获取最新新闻
+async function loadNews() {
+  const url = 'https://api.allorigins.win/raw?url=https%3A%2F%2Fapi.zhitongcaijing.com%2Fv26%2Fsearch%2Fget_all.html%3Faccess_token%3D864af5d6a768f9267c7ddaeb15ba9504%26customized%3D1%26dev%3D0%26keyword%3D%2520%26mainland%3D1%26style%3Dnight%26token%3Db35da9d591f5bedadc9c0d622025f5e37f1b020c%26tradition_chinese%3D0%26version%3D4.9.7&_ts=' + Date.now();
+
+  try {
+    const res = await fetch(url, { cache: 'no-store' });
+    const json = await res.json();
+    const allLists = json.data?.list || [];
+    const flashNews = allLists.find(item => item.list_type === 'immediately');
+    const newsList = flashNews?.list || [];
+
+    // 找出新增新闻
+    const newNews = newsList.filter(item => {
+      const id = item.id || item.create_time_desc;
+      return !previousNewsIds.has(id);
+    });
+
+    if (newNews.length > 0) {
+      // 更新已存在新闻 ID 集合
+      newNews.forEach(item => {
+        const id = item.id || item.create_time_desc;
+        previousNewsIds.add(id);
+      });
+
+      renderNewNews(newNews);
+
+      // 自动朗读新增新闻
+      if (autoReadEnabled) {
+        newNews.forEach(item => {
+          const text = (item.title || '[无标题]') + '。' + (item.content || '');
+          enqueueText(text);
+        });
+      }
+    }
+  } catch (err) {
+    console.error('加载失败:', err);
+  }
+}
+
+// 首次用户点击页面启动朗读
+function enableAutoRead() {
+  if (!autoReadEnabled) {
+    autoReadEnabled = true;
+    document.getElementById('start-tips').style.display = 'none';
+    // 激活一次 TTS
+    const testUtter = new SpeechSynthesisUtterance('');
+    speechSynthesis.speak(testUtter);
+    loadNews();
+  }
+}
+
+document.getElementById('start-tips').addEventListener('click', enableAutoRead);
+document.body.addEventListener('click', enableAutoRead, { once: true });
+
+// 定时轮询
+setInterval(loadNews, 5000);
+</script>
+</body>
+</html>
