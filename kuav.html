@@ -20,42 +20,32 @@ h2 { color: #fff; }
 <div id="news-list">加载中...</div>
 
 <script>
-let previousNewsIds = new Set();  // 用 Set 保存已存在新闻 ID
+let previousNewsIds = new Set();  // 保存已存在新闻 ID
 let ttsQueue = [];
 let isSpeaking = false;
 let autoReadEnabled = false;
+let preferredVoice = null; // 缓存首选语音
 
-// ========== 指定语音逻辑 ========== //
-const preferredVoiceName = "Sandy"; // 你想优先用的语音名
+const preferredVoiceName = "Sandy"; // 优先语音名
 
-function getPreferredChineseVoice() {
+// 获取首选语音，等待 voiceschanged
+function initVoices() {
   const voices = speechSynthesis.getVoices();
-
-  // 1. 精确匹配首选语音
-  let voice = voices.find(v => v.name === preferredVoiceName && v.lang === "zh-CN");
-  if (voice) return voice;
-
-  // 2. fallback 普通话 zh-CN
-  voice = voices.find(v => v.lang === "zh-CN");
-  if (voice) return voice;
-
-  // 3. fallback 其他中文
-  voice = voices.find(v => v.lang.startsWith("zh"));
-  if (voice) return voice;
-
-  // 4. fallback 任何语音
-  return voices[0];
+  preferredVoice = voices.find(v => v.name === preferredVoiceName && v.lang === "zh-CN") ||
+                   voices.find(v => v.lang === "zh-CN") ||
+                   voices.find(v => v.lang.startsWith("zh")) ||
+                   voices[0];
 }
+
+// Safari/iOS 语音列表加载完成事件
+speechSynthesis.onvoiceschanged = initVoices;
 
 // TTS 播报函数
 function speakText(text) {
   if (!('speechSynthesis' in window)) return;
+  if (!preferredVoice) return; // 如果语音还没准备好，先不播
   const utter = new SpeechSynthesisUtterance(text);
-
-  // 指定语音
-  const voice = getPreferredChineseVoice();
-  if (voice) utter.voice = voice;
-
+  utter.voice = preferredVoice;
   utter.rate = 1;
   utter.pitch = 1;
   utter.onend = () => { isSpeaking = false; processQueue(); };
@@ -78,7 +68,7 @@ function processQueue() {
 // 渲染新增新闻
 function renderNewNews(newsItems) {
   const container = document.getElementById('news-list');
-  newsItems.reverse().forEach(item => {  // 新增新闻按顺序插入顶部
+  newsItems.reverse().forEach(item => {
     const id = item.id || item.create_time_desc || Math.random();
     const time = item.create_time_desc || '';
     const title = item.title?.trim() || '[无标题]';
@@ -92,14 +82,13 @@ function renderNewNews(newsItems) {
       <div class="content">${content}</div>
     `;
     html.querySelector('.content').addEventListener('click', () => html.querySelector('.content').classList.toggle('expanded'));
-    container.insertBefore(html, container.firstChild); // 插入顶部
+    container.insertBefore(html, container.firstChild);
   });
 }
 
 // 获取最新新闻
 async function loadNews() {
   const url = 'https://api.allorigins.win/raw?url=https%3A%2F%2Fapi.zhitongcaijing.com%2Fv26%2Fsearch%2Fget_all.html%3Faccess_token%3D864af5d6a768f9267c7ddaeb15ba9504%26customized%3D1%26dev%3D0%26keyword%3D%2520%26mainland%3D1%26style%3Dnight%26token%3Db35da9d591f5bedadc9c0d622025f5e37f1b020c%26tradition_chinese%3D0%26version%3D4.9.7&_ts=' + Date.now();
-
   try {
     const res = await fetch(url, { cache: 'no-store' });
     const json = await res.json();
@@ -114,7 +103,6 @@ async function loadNews() {
     });
 
     if (newNews.length > 0) {
-      // 更新已存在新闻 ID 集合
       newNews.forEach(item => {
         const id = item.id || item.create_time_desc;
         previousNewsIds.add(id);
