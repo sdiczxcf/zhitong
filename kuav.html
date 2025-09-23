@@ -30,10 +30,7 @@ const preferredVoiceName = "Sandy"; // 你想优先用的语音名
 
 function getPreferredChineseVoice() {
   const voices = speechSynthesis.getVoices();
-voices.forEach(v => {
-    console.log(v.name + ' [' + v.lang + ']');
-    alert(v.name + ' [' + v.lang + ']'); // 如果想用 alert 查看
-  });
+
   // 1. 精确匹配首选语音
   let voice = voices.find(v => v.name === preferredVoiceName && v.lang === "zh-CN");
   if (voice) return voice;
