@@ -71,8 +71,11 @@ async function loadNews() {
 
       if (autoReadEnabled) {
         newNews.forEach(item => {
+          const title = item.title || '[无标题]';
           const content = item.content || '';
-          const text = (item.title || '[无标题]') + '。' + content;
+          // 正文超过 40 字只取前 40 字，否则全文
+          const readContent = content.length > MAX_READ_LENGTH ? content.slice(0, MAX_READ_LENGTH) : content;
+          const text = title + '。' + readContent;
           ttsQueue.push(text);
         });
       }
@@ -82,38 +85,34 @@ async function loadNews() {
   }
 }
 
-// 快速朗读循环
+// 快速朗读函数
 function fastReadLoop() {
   if (!autoReadEnabled) return;
 
-  if (ttsQueue.length > 0) {
-    let text = ttsQueue.shift();
-
-    if ('speechSynthesis' in window) {
-      // 判断长度是否超过40字
-      let toRead = text.length > MAX_READ_LENGTH ? text.slice(0, MAX_READ_LENGTH) : text;
-
-      // 停止当前朗读
-      speechSynthesis.cancel();
-
-      const utter = new SpeechSynthesisUtterance(toRead);
-      const voices = speechSynthesis.getVoices();
-      const zhVoice = voices.find(v => /zh|cn/i.test(v.lang));
-      if (zhVoice) utter.voice = zhVoice;
-      utter.rate = 1;
-      utter.pitch = 1;
-      speechSynthesis.speak(utter);
-
-      // 如果正文超过40字，强制1.5秒后切换下一条
-      // 如果不足40字，根据长度正常朗读时间
-      let duration = text.length > MAX_READ_LENGTH ? 1500 : Math.max(1000, text.length * 80);
-
-      setTimeout(fastReadLoop, duration);
-    }
-  } else {
-    // 队列为空，每1秒继续轮询
-    setTimeout(fastReadLoop, 1000);
+  if (ttsQueue.length === 0) {
+    setTimeout(fastReadLoop, 1000); // 队列为空时等待
+    return;
   }
+
+  const text = ttsQueue.shift();
+  if (!('speechSynthesis' in window)) return;
+
+  // 停止当前朗读
+  speechSynthesis.cancel();
+
+  const utter = new SpeechSynthesisUtterance(text);
+  const voices = speechSynthesis.getVoices();
+  const zhVoice = voices.find(v => /zh|cn/i.test(v.lang));
+  if (zhVoice) utter.voice = zhVoice;
+  utter.rate = 1;
+  utter.pitch = 1;
+
+  // 当朗读完自动进入下一条
+  utter.onend = () => {
+    setTimeout(fastReadLoop, 200); // 200ms 小间隔切换下一条
+  };
+
+  speechSynthesis.speak(utter);
 }
 
 // 启动自动朗读
