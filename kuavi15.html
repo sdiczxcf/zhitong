@@ -24,34 +24,18 @@ let previousNewsKey = new Set();  // 标题+内容前20字去重
 let ttsQueue = [];
 let isSpeaking = false;
 let autoReadEnabled = false;
-let zhVoice = null;
 
-// 监听语音加载
-speechSynthesis.onvoiceschanged = () => {
-  const voices = speechSynthesis.getVoices();
-  zhVoice = voices.find(v => /zh|cn/i.test(v.lang));
-};
-
-// 播报函数
+// TTS 播报函数
 function speakText(text) {
   if (!('speechSynthesis' in window)) return;
-  if (!zhVoice) {
-    // 中文语音未加载，延迟重试
-    setTimeout(() => speakText(text), 200);
-    return;
-  }
   const utter = new SpeechSynthesisUtterance(text);
-  utter.voice = zhVoice;
+  const voices = speechSynthesis.getVoices();
+  const zhVoice = voices.find(v => /zh|cn/i.test(v.lang));
+  if (zhVoice) utter.voice = zhVoice;
   utter.rate = 1;
   utter.pitch = 1;
-  utter.onend = () => {
-    isSpeaking = false;
-    setTimeout(processQueue, 200); // 延迟播放下一条
-  };
-  utter.onerror = () => {
-    isSpeaking = false;
-    setTimeout(processQueue, 200);
-  };
+  utter.onend = () => { isSpeaking = false; processQueue(); };
+  utter.onerror = () => { isSpeaking = false; processQueue(); };
   isSpeaking = true;
   speechSynthesis.speak(utter);
 }
@@ -83,10 +67,11 @@ function renderNewNews(newsItems) {
       <div class="title">${title}</div>
       <div class="content">${content}</div>
     `;
-    // 点击内容朗读全文
+    // 点击内容朗读全文（最多前40字）
     html.querySelector('.content').addEventListener('click', () => {
       html.querySelector('.content').classList.toggle('expanded');
-      enqueueText(title + '。' + content);
+      const textToSpeak = title + '。' + (content.slice(0, 40));
+      enqueueText(textToSpeak);
     });
     container.insertBefore(html, container.firstChild);
   });
@@ -116,10 +101,11 @@ async function loadNews() {
     if (newNews.length > 0) {
       renderNewNews(newNews);
 
-      // 自动朗读最新一条新闻
+      // 自动朗读新增新闻（正文最多前40字）
       if (autoReadEnabled) {
         const first = newNews[0];
-        enqueueText((first.title || '[无标题]') + '。' + (first.content || ''));
+        const textToSpeak = (first.title || '[无标题]') + '。' + ((first.content || '').slice(0, 40));
+        enqueueText(textToSpeak);
       }
     }
   } catch (err) {
@@ -127,12 +113,12 @@ async function loadNews() {
   }
 }
 
-// 启动朗读
+// 首次点击启动朗读
 function enableAutoRead() {
   if (!autoReadEnabled) {
     autoReadEnabled = true;
     document.getElementById('start-tips').style.display = 'none';
-    // 用户手势触发，播放测试文字
+    // 用户手势触发，播放提示文字
     const testUtter = new SpeechSynthesisUtterance('朗读已启动');
     speechSynthesis.speak(testUtter);
     loadNews();
