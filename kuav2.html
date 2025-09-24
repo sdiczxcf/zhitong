@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -21,41 +20,15 @@ h2 { color: #fff; }
 <div id="news-list">加载中...</div>
 
 <script>
-let previousNewsKey = new Set();  // 用标题 + 内容前10字去重
+let previousNewsKey = new Set();
 let ttsQueue = [];
-let isSpeaking = false;
 let autoReadEnabled = false;
-
-// TTS 播报函数
-function speakText(text) {
-  if (!('speechSynthesis' in window)) return;
-  const utter = new SpeechSynthesisUtterance(text);
-  const voices = speechSynthesis.getVoices();
-  const zhVoice = voices.find(v => /zh|cn/i.test(v.lang));
-  if (zhVoice) utter.voice = zhVoice;
-  utter.rate = 1;
-  utter.pitch = 1;
-  utter.onend = () => { isSpeaking = false; processQueue(); };
-  utter.onerror = () => { isSpeaking = false; processQueue(); };
-  isSpeaking = true;
-  speechSynthesis.speak(utter);
-}
-
-// 队列处理
-function enqueueText(text) {
-  ttsQueue.push(text);
-  processQueue();
-}
-function processQueue() {
-  if (isSpeaking || ttsQueue.length === 0) return;
-  const text = ttsQueue.shift();
-  speakText(text);
-}
+const MAX_READ_LENGTH = 40;
 
 // 渲染新增新闻
 function renderNewNews(newsItems) {
   const container = document.getElementById('news-list');
-  newsItems.reverse().forEach(item => {  // 新增新闻按顺序插入顶部
+  newsItems.reverse().forEach(item => {
     const id = item.id || Math.random();
     const time = item.create_time_desc || '';
     const title = item.title?.trim() || '[无标题]';
@@ -69,7 +42,7 @@ function renderNewNews(newsItems) {
       <div class="content">${content}</div>
     `;
     html.querySelector('.content').addEventListener('click', () => html.querySelector('.content').classList.toggle('expanded'));
-    container.insertBefore(html, container.firstChild); // 插入顶部
+    container.insertBefore(html, container.firstChild);
   });
 }
 
@@ -84,7 +57,6 @@ async function loadNews() {
     const flashNews = allLists.find(item => item.list_type === 'immediately');
     const newsList = flashNews?.list || [];
 
-    // 找出新增新闻（用标题+内容前10字去重）
     const newNews = newsList.filter(item => {
       const title = item.title?.trim() || '';
       const content = item.content?.trim().slice(0, 20) || '';
@@ -97,11 +69,10 @@ async function loadNews() {
     if (newNews.length > 0) {
       renderNewNews(newNews);
 
-      // 自动朗读新增新闻
       if (autoReadEnabled) {
         newNews.forEach(item => {
-          const text = (item.title || '[无标题]') + '。' + (item.content || '');
-          enqueueText(text);
+          const text = (item.title || '[无标题]') + '。' + ((item.content || '').slice(0, MAX_READ_LENGTH));
+          ttsQueue.push(text);
         });
       }
     }
@@ -110,22 +81,52 @@ async function loadNews() {
   }
 }
 
-// 首次用户点击页面启动朗读
+// 快速朗读函数（每条新闻朗读前40字，朗读完或中途都立即切换下一条）
+async function fastReadLoop() {
+  if (!autoReadEnabled) return;
+  if (ttsQueue.length === 0) {
+    setTimeout(fastReadLoop, 1000); // 队列为空时等待
+    return;
+  }
+
+  const text = ttsQueue.shift();
+  if (!('speechSynthesis' in window)) return;
+
+  // 立即停止当前朗读
+  speechSynthesis.cancel();
+
+  const utter = new SpeechSynthesisUtterance(text);
+  const voices = speechSynthesis.getVoices();
+  const zhVoice = voices.find(v => /zh|cn/i.test(v.lang));
+  if (zhVoice) utter.voice = zhVoice;
+  utter.rate = 1;
+  utter.pitch = 1;
+
+  speechSynthesis.speak(utter);
+
+  // 每条新闻朗读大约 1.5 秒后就切换下一条
+  // 这里可以根据文字长度动态调整时间：每10字约0.5秒
+  const duration = Math.max(1500, text.length * 80); 
+  setTimeout(fastReadLoop, duration);
+}
+
+// 启动自动朗读
 function enableAutoRead() {
   if (!autoReadEnabled) {
     autoReadEnabled = true;
     document.getElementById('start-tips').style.display = 'none';
-    // 激活一次 TTS
+    // 激活 TTS
     const testUtter = new SpeechSynthesisUtterance('');
     speechSynthesis.speak(testUtter);
     loadNews();
+    fastReadLoop();
   }
 }
 
 document.getElementById('start-tips').addEventListener('click', enableAutoRead);
 document.body.addEventListener('click', enableAutoRead, { once: true });
 
-// 定时轮询
+// 定时轮询新闻
 setInterval(loadNews, 5000);
 </script>
 </body>
