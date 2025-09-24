@@ -1,124 +1,133 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh">
 <head>
-  <meta charset="UTF-8">
-  <title>新闻自动朗读</title>
-  <style>
-    body { font-family: Arial, sans-serif; }
-    #start-tips { background: yellow; padding: 10px; cursor: pointer; }
-    #news-container { margin-top: 20px; }
-    .news-item { margin-bottom: 10px; padding: 5px; border-bottom: 1px solid #ccc; }
-  </style>
+<meta charset="UTF-8">
+<title>快讯展示（增量朗读）</title>
+<style>
+body { font-family: sans-serif; padding: 10px; background-color: #121212; color: #f1f1f1; }
+h2 { color: #fff; }
+#news-list .item { border-bottom: 1px solid #333; padding: 10px 0; }
+.time { font-size: 0.9em; color: #999; margin-bottom: 4px; }
+.title { font-weight: bold; font-size: 1em; color: #fff; margin-bottom: 4px; }
+.content { font-size: 1em; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; transition: all 0.3s ease; }
+.content.expanded { -webkit-line-clamp: unset; }
+#start-tips { color:#81d4fa; font-size:1em; margin-bottom:10px; cursor:pointer; }
+</style>
 </head>
 <body>
-  <div id="start-tips">点击这里启用自动朗读</div>
-  <div id="news-container"></div>
+<h2>快讯列表</h2>
+<div id="start-tips">点击此区域或页面任意位置启动自动朗读</div>
+<div id="news-list">加载中...</div>
 
-  <script>
-    let previousNewsIds = new Set();
-    let ttsQueue = [];
-    let isSpeaking = false;
-    let autoReadEnabled = false;
-    let voicesReady = false;
-    let preferredVoice = null;
-    const preferredVoiceName = "婷婷"; // 想要的语音
+<script>
+let previousNewsIds = new Set();
+let ttsQueue = [];
+let isSpeaking = false;
+let autoReadEnabled = false;
 
-    function initVoices() {
-      const voices = speechSynthesis.getVoices();
-      if (!voices || voices.length === 0) {
-        alert("语音列表为空，稍后再试");
-        return;
-      }
-      let allVoices = voices.map(v => v.name + " [" + v.lang + "]").join("\n");
-      alert("语音列表：\n" + allVoices);
+// ========== 在线 TTS 播报 ========== //
+// 这里用百度在线 TTS 示例接口
+function speakTextOnline(text) {
+    if (!text) return;
+    const url = 'https://fanyi.baidu.com/gettts?lan=zh&text=' + encodeURIComponent(text) + '&spd=5&source=web';
+    const audio = new Audio(url);
+    audio.onended = () => {
+        isSpeaking = false;
+        processQueue();
+    };
+    audio.onerror = () => {
+        isSpeaking = false;
+        processQueue();
+    };
+    isSpeaking = true;
+    audio.play().catch(err => {
+        console.error('播放失败:', err);
+        isSpeaking = false;
+        processQueue();
+    });
+}
 
-      preferredVoice = voices.find(v => v.name === preferredVoiceName && v.lang === "zh-CN") ||
-                       voices.find(v => v.lang === "zh-CN") ||
-                       voices.find(v => v.lang.startsWith("zh")) ||
-                       voices[0];
+// 队列处理
+function enqueueText(text) {
+    ttsQueue.push(text);
+    processQueue();
+}
+function processQueue() {
+    if (isSpeaking || ttsQueue.length === 0) return;
+    const text = ttsQueue.shift();
+    speakTextOnline(text);
+}
 
-      alert("选中的语音：" + (preferredVoice ? preferredVoice.name + " [" + preferredVoice.lang + "]" : "无"));
-      voicesReady = true;
-    }
+// 渲染新增新闻
+function renderNewNews(newsItems) {
+    const container = document.getElementById('news-list');
+    newsItems.reverse().forEach(item => {
+        const id = item.id || item.create_time_desc || Math.random();
+        const time = item.create_time_desc || '';
+        const title = item.title?.trim() || '[无标题]';
+        const content = item.content || '';
+        const html = document.createElement('div');
+        html.className = 'item';
+        html.dataset.id = id;
+        html.innerHTML = `
+          <div class="time">${time}</div>
+          <div class="title">${title}</div>
+          <div class="content">${content}</div>
+        `;
+        html.querySelector('.content').addEventListener('click', () => html.querySelector('.content').classList.toggle('expanded'));
+        container.insertBefore(html, container.firstChild);
+    });
+}
 
-    function speakText(text) {
-      if (!('speechSynthesis' in window)) {
-        alert("浏览器不支持 speechSynthesis");
-        return;
-      }
-      if (!preferredVoice || !voicesReady) {
-        alert("语音未准备好");
-        return;
-      }
-      alert("准备朗读：" + text);
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.voice = preferredVoice;
-      utter.rate = 1;
-      utter.pitch = 1;
-      utter.onend = () => { isSpeaking = false; processQueue(); alert("朗读结束"); };
-      utter.onerror = (e) => { isSpeaking = false; processQueue(); alert("朗读出错：" + JSON.stringify(e)); };
-      isSpeaking = true;
-      speechSynthesis.speak(utter);
-    }
+// 获取最新新闻
+async function loadNews() {
+    const url = 'https://api.allorigins.win/raw?url=https%3A%2F%2Fapi.zhitongcaijing.com%2Fv26%2Fsearch%2Fget_all.html%3Faccess_token%3D864af5d6a768f9267c7ddaeb15ba9504%26customized%3D1%26dev%3D0%26keyword%3D%2520%26mainland%3D1%26style%3Dnight%26token%3Db35da9d591f5bedadc9c0d622025f5e37f1b020c%26tradition_chinese%3D0%26version%3D4.9.7&_ts=' + Date.now();
+    try {
+        const res = await fetch(url, { cache: 'no-store' });
+        const json = await res.json();
+        const allLists = json.data?.list || [];
+        const flashNews = allLists.find(item => item.list_type === 'immediately');
+        const newsList = flashNews?.list || [];
 
-    function enqueueText(text) {
-      ttsQueue.push(text);
-      processQueue();
-    }
-    function processQueue() {
-      if (isSpeaking || ttsQueue.length === 0) return;
-      const text = ttsQueue.shift();
-      speakText(text);
-    }
+        const newNews = newsList.filter(item => {
+            const id = item.id || item.create_time_desc;
+            return !previousNewsIds.has(id);
+        });
 
-    function enableAutoRead() {
-      if (!autoReadEnabled) {
-        autoReadEnabled = true;
-        document.getElementById('start-tips').style.display = 'none';
-        alert("已点击，激活 TTS");
+        if (newNews.length > 0) {
+            newNews.forEach(item => {
+                const id = item.id || item.create_time_desc;
+                previousNewsIds.add(id);
+            });
 
-        // 先用一个空朗读激活 Safari
-        const testUtter = new SpeechSynthesisUtterance('');
-        speechSynthesis.speak(testUtter);
-
-        // 延迟一点再获取 voices
-        setTimeout(initVoices, 500);
-
-        // 启动新闻轮询
-        fetchNews();
-        setInterval(fetchNews, 15000);
-      }
-    }
-
-    async function fetchNews() {
-      try {
-        // 模拟新闻接口（换成你的 API 地址）
-        const response = await fetch("https://api.currentsapi.services/v1/latest-news?language=zh&apiKey=demo");
-        const data = await response.json();
-
-        const container = document.getElementById("news-container");
-
-        data.news.forEach(item => {
-          if (!previousNewsIds.has(item.id)) {
-            previousNewsIds.add(item.id);
-
-            const div = document.createElement("div");
-            div.className = "news-item";
-            div.textContent = item.title;
-            container.prepend(div);
+            renderNewNews(newNews);
 
             if (autoReadEnabled) {
-              enqueueText(item.title);
+                newNews.forEach(item => {
+                    const text = (item.title || '[无标题]') + '。' + (item.content || '');
+                    enqueueText(text);
+                });
             }
-          }
-        });
-      } catch (e) {
-        console.error("获取新闻失败:", e);
-      }
+        }
+    } catch (err) {
+        console.error('加载失败:', err);
     }
+}
 
-    document.getElementById('start-tips').addEventListener('click', enableAutoRead);
-    document.body.addEventListener('click', enableAutoRead, { once: true });
-  </script>
+// 用户点击启动朗读
+function enableAutoRead() {
+    if (!autoReadEnabled) {
+        autoReadEnabled = true;
+        document.getElementById('start-tips').style.display = 'none';
+        loadNews();
+    }
+}
+
+document.getElementById('start-tips').addEventListener('click', enableAutoRead);
+document.body.addEventListener('click', enableAutoRead, { once: true });
+
+// 定时轮询
+setInterval(loadNews, 5000);
+</script>
 </body>
 </html>
