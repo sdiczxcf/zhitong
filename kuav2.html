@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>新闻自动朗读</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
+    body { font-family: Arial, sans-serif; }
     #start-tips { background: yellow; padding: 10px; cursor: pointer; }
     #news-container { margin-top: 20px; }
     .news-item { margin-bottom: 10px; padding: 5px; border-bottom: 1px solid #ccc; }
@@ -12,7 +12,7 @@
 </head>
 <body>
   <div id="start-tips">点击这里启用自动朗读</div>
-  <div id="news-container">暂无新闻</div>
+  <div id="news-container"></div>
 
   <script>
     let previousNewsIds = new Set();
@@ -21,39 +21,42 @@
     let autoReadEnabled = false;
     let voicesReady = false;
     let preferredVoice = null;
-    const preferredVoiceName = "婷婷"; // 目标语音
+    const preferredVoiceName = "婷婷"; // 想要的语音
 
     function initVoices() {
       const voices = speechSynthesis.getVoices();
       if (!voices || voices.length === 0) {
-        console.log("语音列表为空，稍后再试");
+        alert("语音列表为空，稍后再试");
         return;
       }
-      console.log("语音列表：", voices.map(v => v.name + " [" + v.lang + "]"));
+      let allVoices = voices.map(v => v.name + " [" + v.lang + "]").join("\n");
+      alert("语音列表：\n" + allVoices);
+
       preferredVoice = voices.find(v => v.name === preferredVoiceName && v.lang === "zh-CN") ||
                        voices.find(v => v.lang === "zh-CN") ||
                        voices.find(v => v.lang.startsWith("zh")) ||
                        voices[0];
-      console.log("选中的语音：", preferredVoice ? preferredVoice.name + " [" + preferredVoice.lang + "]" : "无");
+
+      alert("选中的语音：" + (preferredVoice ? preferredVoice.name + " [" + preferredVoice.lang + "]" : "无"));
       voicesReady = true;
     }
 
     function speakText(text) {
       if (!('speechSynthesis' in window)) {
-        console.log("浏览器不支持 speechSynthesis");
+        alert("浏览器不支持 speechSynthesis");
         return;
       }
       if (!preferredVoice || !voicesReady) {
-        console.log("语音未准备好");
+        alert("语音未准备好");
         return;
       }
-      console.log("准备朗读：", text);
+      alert("准备朗读：" + text);
       const utter = new SpeechSynthesisUtterance(text);
       utter.voice = preferredVoice;
       utter.rate = 1;
       utter.pitch = 1;
-      utter.onend = () => { isSpeaking = false; processQueue(); console.log("朗读结束"); };
-      utter.onerror = (e) => { isSpeaking = false; processQueue(); console.log("朗读出错：", e); };
+      utter.onend = () => { isSpeaking = false; processQueue(); alert("朗读结束"); };
+      utter.onerror = (e) => { isSpeaking = false; processQueue(); alert("朗读出错：" + JSON.stringify(e)); };
       isSpeaking = true;
       speechSynthesis.speak(utter);
     }
@@ -72,30 +75,28 @@
       if (!autoReadEnabled) {
         autoReadEnabled = true;
         document.getElementById('start-tips').style.display = 'none';
-        console.log("已点击，激活 TTS");
+        alert("已点击，激活 TTS");
 
-        // 激活 Safari TTS
+        // 先用一个空朗读激活 Safari
         const testUtter = new SpeechSynthesisUtterance('');
         speechSynthesis.speak(testUtter);
 
+        // 延迟一点再获取 voices
         setTimeout(initVoices, 500);
 
+        // 启动新闻轮询
         fetchNews();
         setInterval(fetchNews, 15000);
       }
     }
 
     async function fetchNews() {
-      const container = document.getElementById("news-container");
       try {
-        // ⚠️ 这里换成你自己的 API，demo key 可能失效
+        // 模拟新闻接口（换成你的 API 地址）
         const response = await fetch("https://api.currentsapi.services/v1/latest-news?language=zh&apiKey=demo");
         const data = await response.json();
 
-        if (!data.news || !Array.isArray(data.news)) {
-          container.innerHTML = "<div>暂无新闻</div>";
-          return;
-        }
+        const container = document.getElementById("news-container");
 
         data.news.forEach(item => {
           if (!previousNewsIds.has(item.id)) {
@@ -104,7 +105,6 @@
             const div = document.createElement("div");
             div.className = "news-item";
             div.textContent = item.title;
-            if (container.innerHTML === "暂无新闻") container.innerHTML = "";
             container.prepend(div);
 
             if (autoReadEnabled) {
@@ -114,7 +114,6 @@
         });
       } catch (e) {
         console.error("获取新闻失败:", e);
-        container.innerHTML = "<div>获取新闻失败，请稍后再试</div>";
       }
     }
 
