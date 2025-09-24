@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<title>快讯展示（增量朗读）</title>
+<title>快讯展示（调试版）</title>
 <style>
 body { font-family: sans-serif; padding: 10px; background-color: #121212; color: #f1f1f1; }
 h2 { color: #fff; }
@@ -26,36 +26,57 @@ let isSpeaking = false;
 let autoReadEnabled = false;
 let voicesReady = false;
 let preferredVoice = null;
-const preferredVoiceName = "婷婷"; // 首选语音名
+const preferredVoiceName = "婷婷"; // 你想要的中文语音名
 
 // 初始化语音
 function initVoices() {
   const voices = speechSynthesis.getVoices();
+  alert("语音列表数量：" + voices.length);
+  let allVoices = voices.map(v => v.name + " [" + v.lang + "]").join("\n");
+  alert("语音列表：\n" + allVoices);
+
   preferredVoice = voices.find(v => v.name === preferredVoiceName && v.lang === "zh-CN") ||
                    voices.find(v => v.lang === "zh-CN") ||
                    voices.find(v => v.lang.startsWith("zh")) ||
                    voices[0];
+
+  alert("选中的语音：" + (preferredVoice ? preferredVoice.name + " [" + preferredVoice.lang + "]" : "无"));
   voicesReady = true;
-alert(preferredVoice);
-  // 如果用户已点击页面，启动加载新闻
+
   if (autoReadEnabled) {
     loadNews();
   }
 }
 
-// Safari/iOS voiceschanged 事件
+// Safari/iOS 语音加载事件
 speechSynthesis.onvoiceschanged = initVoices;
 
 // TTS 播报
 function speakText(text) {
-  if (!('speechSynthesis' in window)) return;
-  if (!preferredVoice || !voicesReady) return;
+  if (!('speechSynthesis' in window)) {
+    alert("浏览器不支持 speechSynthesis");
+    return;
+  }
+  if (!preferredVoice || !voicesReady) {
+    alert("语音未准备好");
+    return;
+  }
+  alert("准备朗读：" + text);
+
   const utter = new SpeechSynthesisUtterance(text);
   utter.voice = preferredVoice;
   utter.rate = 1;
   utter.pitch = 1;
-  utter.onend = () => { isSpeaking = false; processQueue(); };
-  utter.onerror = () => { isSpeaking = false; processQueue(); };
+  utter.onend = () => { 
+    isSpeaking = false; 
+    processQueue(); 
+    alert("朗读结束");
+  };
+  utter.onerror = (e) => { 
+    isSpeaking = false; 
+    processQueue(); 
+    alert("朗读出错：" + JSON.stringify(e));
+  };
   isSpeaking = true;
   speechSynthesis.speak(utter);
 }
@@ -132,11 +153,12 @@ function enableAutoRead() {
   if (!autoReadEnabled) {
     autoReadEnabled = true;
     document.getElementById('start-tips').style.display = 'none';
-    // 用户点击触发一次空朗读，激活 TTS
+    alert("已点击，激活 TTS");
+
+    // 用户点击触发一次空朗读，解锁 Safari TTS
     const testUtter = new SpeechSynthesisUtterance('');
     speechSynthesis.speak(testUtter);
 
-    // 如果 voices 已准备好，立即加载新闻
     if (voicesReady) {
       loadNews();
     }
