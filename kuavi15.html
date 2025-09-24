@@ -20,23 +20,23 @@ h2 { color: #fff; }
 <div id="news-list">加载中...</div>
 
 <script>
-let previousNewsKey = new Set();  // 用标题 + 内容前20字去重
+let previousNewsKey = new Set();  // 标题+内容前20字去重
 let ttsQueue = [];
 let isSpeaking = false;
 let autoReadEnabled = false;
 let zhVoice = null;
 
-// 监听 voiceschanged，保证中文语音加载完成
+// 监听语音加载
 speechSynthesis.onvoiceschanged = () => {
   const voices = speechSynthesis.getVoices();
   zhVoice = voices.find(v => /zh|cn/i.test(v.lang));
 };
 
-// TTS 播报函数，增加延迟
+// 播报函数
 function speakText(text) {
   if (!('speechSynthesis' in window)) return;
   if (!zhVoice) {
-    // 如果语音还没准备好，延迟重试
+    // 中文语音未加载，延迟重试
     setTimeout(() => speakText(text), 200);
     return;
   }
@@ -44,13 +44,12 @@ function speakText(text) {
   utter.voice = zhVoice;
   utter.rate = 1;
   utter.pitch = 1;
-  utter.onend = () => { 
-    isSpeaking = false; 
-    // 延迟播放下一条，避免 iOS 15 连续播放被阻止
-    setTimeout(processQueue, 200);
+  utter.onend = () => {
+    isSpeaking = false;
+    setTimeout(processQueue, 200); // 延迟播放下一条
   };
-  utter.onerror = () => { 
-    isSpeaking = false; 
+  utter.onerror = () => {
+    isSpeaking = false;
     setTimeout(processQueue, 200);
   };
   isSpeaking = true;
@@ -68,10 +67,10 @@ function processQueue() {
   speakText(text);
 }
 
-// 渲染新增新闻
+// 渲染新闻
 function renderNewNews(newsItems) {
   const container = document.getElementById('news-list');
-  newsItems.reverse().forEach(item => {  // 新增新闻按顺序插入顶部
+  newsItems.reverse().forEach(item => {
     const id = item.id || Math.random();
     const time = item.create_time_desc || '';
     const title = item.title?.trim() || '[无标题]';
@@ -84,16 +83,16 @@ function renderNewNews(newsItems) {
       <div class="title">${title}</div>
       <div class="content">${content}</div>
     `;
+    // 点击内容朗读全文
     html.querySelector('.content').addEventListener('click', () => {
       html.querySelector('.content').classList.toggle('expanded');
-      // 点击内容朗读全文
       enqueueText(title + '。' + content);
     });
-    container.insertBefore(html, container.firstChild); // 插入顶部
+    container.insertBefore(html, container.firstChild);
   });
 }
 
-// 获取最新新闻
+// 获取新闻
 async function loadNews() {
   const url = 'https://api.allorigins.win/raw?url=https%3A%2F%2Fapi.zhitongcaijing.com%2Fv26%2Fsearch%2Fget_all.html%3Faccess_token%3D864af5d6a768f9267c7ddaeb15ba9504%26customized%3D1%26dev%3D0%26keyword%3D%2520%26mainland%3D1%26style%3Dnight%26token%3Db35da9d591f5bedadc9c0d622025f5e37f1b020c%26tradition_chinese%3D0%26version%3D4.9.7&_ts=' + Date.now();
 
@@ -104,7 +103,7 @@ async function loadNews() {
     const flashNews = allLists.find(item => item.list_type === 'immediately');
     const newsList = flashNews?.list || [];
 
-    // 找出新增新闻（用标题+内容前20字去重）
+    // 去重：标题+内容前20字
     const newNews = newsList.filter(item => {
       const title = item.title?.trim() || '';
       const content = item.content?.trim().slice(0, 20) || '';
@@ -117,12 +116,10 @@ async function loadNews() {
     if (newNews.length > 0) {
       renderNewNews(newNews);
 
-      // 自动朗读新增新闻
+      // 自动朗读最新一条新闻
       if (autoReadEnabled) {
-        newNews.forEach(item => {
-          const text = (item.title || '[无标题]') + '。' + (item.content || '');
-          enqueueText(text);
-        });
+        const first = newNews[0];
+        enqueueText((first.title || '[无标题]') + '。' + (first.content || ''));
       }
     }
   } catch (err) {
@@ -130,13 +127,13 @@ async function loadNews() {
   }
 }
 
-// 首次用户点击页面启动朗读
+// 启动朗读
 function enableAutoRead() {
   if (!autoReadEnabled) {
     autoReadEnabled = true;
     document.getElementById('start-tips').style.display = 'none';
-    // 激活一次 TTS
-    const testUtter = new SpeechSynthesisUtterance('');
+    // 用户手势触发，播放测试文字
+    const testUtter = new SpeechSynthesisUtterance('朗读已启动');
     speechSynthesis.speak(testUtter);
     loadNews();
   }
