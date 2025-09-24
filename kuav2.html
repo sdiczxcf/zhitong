@@ -26,7 +26,7 @@ let isSpeaking = false;
 let autoReadEnabled = false;
 let voicesReady = false;
 let preferredVoice = null;
-const preferredVoiceName = "Sandy"; // 首选语音名
+const preferredVoiceName = "婷婷"; // 首选语音名
 
 // 初始化语音
 function initVoices() {
@@ -36,7 +36,7 @@ function initVoices() {
                    voices.find(v => v.lang.startsWith("zh")) ||
                    voices[0];
   voicesReady = true;
-
+alert(preferredVoice);
   // 如果用户已点击页面，启动加载新闻
   if (autoReadEnabled) {
     loadNews();
