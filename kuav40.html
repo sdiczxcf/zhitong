@@ -20,38 +20,12 @@ h2 { color: #fff; }
 <div id="news-list">加载中...</div>
 
 <script>
-let previousNewsKey = new Set();  // 标题+内容前20字去重
+let previousNewsKey = new Set();
 let ttsQueue = [];
-let isSpeaking = false;
 let autoReadEnabled = false;
+const MAX_READ_LENGTH = 40;
 
-// TTS 播报函数
-function speakText(text) {
-  if (!('speechSynthesis' in window)) return;
-  const utter = new SpeechSynthesisUtterance(text);
-  const voices = speechSynthesis.getVoices();
-  const zhVoice = voices.find(v => /zh|cn/i.test(v.lang));
-  if (zhVoice) utter.voice = zhVoice;
-  utter.rate = 1;
-  utter.pitch = 1;
-  utter.onend = () => { isSpeaking = false; processQueue(); };
-  utter.onerror = () => { isSpeaking = false; processQueue(); };
-  isSpeaking = true;
-  speechSynthesis.speak(utter);
-}
-
-// 队列处理
-function enqueueText(text) {
-  ttsQueue.push(text);
-  processQueue();
-}
-function processQueue() {
-  if (isSpeaking || ttsQueue.length === 0) return;
-  const text = ttsQueue.shift();
-  speakText(text);
-}
-
-// 渲染新闻
+// 渲染新增新闻
 function renderNewNews(newsItems) {
   const container = document.getElementById('news-list');
   newsItems.reverse().forEach(item => {
@@ -67,17 +41,12 @@ function renderNewNews(newsItems) {
       <div class="title">${title}</div>
       <div class="content">${content}</div>
     `;
-    // 点击内容朗读全文（最多前40字）
-    html.querySelector('.content').addEventListener('click', () => {
-      html.querySelector('.content').classList.toggle('expanded');
-      const textToSpeak = title + '。' + (content.slice(0, 40));
-      enqueueText(textToSpeak);
-    });
+    html.querySelector('.content').addEventListener('click', () => html.querySelector('.content').classList.toggle('expanded'));
     container.insertBefore(html, container.firstChild);
   });
 }
 
-// 获取新闻
+// 获取最新新闻
 async function loadNews() {
   const url = 'https://api.allorigins.win/raw?url=https%3A%2F%2Fapi.zhitongcaijing.com%2Fv26%2Fsearch%2Fget_all.html%3Faccess_token%3D864af5d6a768f9267c7ddaeb15ba9504%26customized%3D1%26dev%3D0%26keyword%3D%2520%26mainland%3D1%26style%3Dnight%26token%3Db35da9d591f5bedadc9c0d622025f5e37f1b020c%26tradition_chinese%3D0%26version%3D4.9.7&_ts=' + Date.now();
 
@@ -88,7 +57,6 @@ async function loadNews() {
     const flashNews = allLists.find(item => item.list_type === 'immediately');
     const newsList = flashNews?.list || [];
 
-    // 去重：标题+内容前20字
     const newNews = newsList.filter(item => {
       const title = item.title?.trim() || '';
       const content = item.content?.trim().slice(0, 20) || '';
@@ -101,11 +69,12 @@ async function loadNews() {
     if (newNews.length > 0) {
       renderNewNews(newNews);
 
-      // 自动朗读新增新闻（正文最多前40字）
       if (autoReadEnabled) {
-        const first = newNews[0];
-        const textToSpeak = (first.title || '[无标题]') + '。' + ((first.content || '').slice(0, 40));
-        enqueueText(textToSpeak);
+        newNews.forEach(item => {
+          const content = item.content || '';
+          const text = (item.title || '[无标题]') + '。' + content;
+          ttsQueue.push(text);
+        });
       }
     }
   } catch (err) {
@@ -113,22 +82,57 @@ async function loadNews() {
   }
 }
 
-// 首次点击启动朗读
+// 快速朗读循环
+function fastReadLoop() {
+  if (!autoReadEnabled) return;
+
+  if (ttsQueue.length > 0) {
+    let text = ttsQueue.shift();
+
+    if ('speechSynthesis' in window) {
+      // 判断长度是否超过40字
+      let toRead = text.length > MAX_READ_LENGTH ? text.slice(0, MAX_READ_LENGTH) : text;
+
+      // 停止当前朗读
+      speechSynthesis.cancel();
+
+      const utter = new SpeechSynthesisUtterance(toRead);
+      const voices = speechSynthesis.getVoices();
+      const zhVoice = voices.find(v => /zh|cn/i.test(v.lang));
+      if (zhVoice) utter.voice = zhVoice;
+      utter.rate = 1;
+      utter.pitch = 1;
+      speechSynthesis.speak(utter);
+
+      // 如果正文超过40字，强制1.5秒后切换下一条
+      // 如果不足40字，根据长度正常朗读时间
+      let duration = text.length > MAX_READ_LENGTH ? 1500 : Math.max(1000, text.length * 80);
+
+      setTimeout(fastReadLoop, duration);
+    }
+  } else {
+    // 队列为空，每1秒继续轮询
+    setTimeout(fastReadLoop, 1000);
+  }
+}
+
+// 启动自动朗读
 function enableAutoRead() {
   if (!autoReadEnabled) {
     autoReadEnabled = true;
     document.getElementById('start-tips').style.display = 'none';
-    // 用户手势触发，播放提示文字
-    const testUtter = new SpeechSynthesisUtterance('朗读已启动');
+    // 激活 TTS
+    const testUtter = new SpeechSynthesisUtterance('');
     speechSynthesis.speak(testUtter);
     loadNews();
+    fastReadLoop();
   }
 }
 
 document.getElementById('start-tips').addEventListener('click', enableAutoRead);
 document.body.addEventListener('click', enableAutoRead, { once: true });
 
-// 定时轮询
+// 定时轮询新闻
 setInterval(loadNews, 5000);
 </script>
 </body>
