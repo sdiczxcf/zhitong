@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>TTS 语音调试</title>
+</head>
+<body>
+<h2>语音调试页面</h2>
+<p>点击任意处加载语音列表并分页显示</p>
+
+<script>
+function showVoicesPaged() {
+  const voices = speechSynthesis.getVoices();
+  if (!voices.length) {
+    alert("语音列表为空，请稍等或重试");
+    return;
+  }
+
+  let text = voices.map(v => `${v.name} [${v.lang}]`).join("\n");
+  const parts = text.match(/[\s\S]{1,500}/g); // 每页500字符
+
+  alert(`共找到 ${voices.length} 个语音，将分 ${parts.length} 页显示`);
+
+  parts.forEach((part, i) => {
+    alert(`第 ${i+1}/${parts.length} 页:\n\n${part}`);
+  });
+}
+
+// Safari 需要用户点击才触发语音初始化
+document.body.addEventListener("click", () => {
+  // 先触发一次空的utterance以激活voices
+  speechSynthesis.speak(new SpeechSynthesisUtterance(" "));
+  setTimeout(showVoicesPaged, 500); // 等待voices加载
+}, { once: true });
+
+// 监听voices变化
+speechSynthesis.onvoiceschanged = () => {
+  console.log("voiceschanged fired, 可再次点击页面查看结果");
+};
+</script>
+</body>
+</html>
