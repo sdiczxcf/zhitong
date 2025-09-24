@@ -1,0 +1,150 @@
+
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>快讯展示（增量朗读）</title>
+<style>
+body { font-family: sans-serif; padding: 10px; background-color: #121212; color: #f1f1f1; }
+h2 { color: #fff; }
+#news-list .item { border-bottom: 1px solid #333; padding: 10px 0; }
+.time { font-size: 0.9em; color: #999; margin-bottom: 4px; }
+.title { font-weight: bold; font-size: 1em; color: #fff; margin-bottom: 4px; }
+.content { font-size: 1em; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; transition: all 0.3s ease; }
+.content.expanded { -webkit-line-clamp: unset; }
+#start-tips { color:#81d4fa; font-size:1em; margin-bottom:10px; cursor:pointer; }
+</style>
+</head>
+<body>
+<h2>快讯列表</h2>
+<div id="start-tips">点击此区域或页面任意位置启动自动朗读</div>
+<div id="news-list">加载中...</div>
+
+<script>
+let previousNewsKey = new Set();
+let ttsQueue = [];
+let autoReadEnabled = false;
+const MAX_READ_LENGTH = 40;
+
+// 过滤关键词列表
+const filterKeywords = ['.SH', '.SZ', '.HK', '*ST', 'A股', '主板', '减持'];
+
+// 渲染新增新闻
+function renderNewNews(newsItems) {
+  const container = document.getElementById('news-list');
+  newsItems.reverse().forEach(item => {
+    const id = item.id || Math.random();
+    const time = item.create_time_desc || '';
+    const title = item.title?.trim() || '[无标题]';
+    const content = item.content || '';
+    const html = document.createElement('div');
+    html.className = 'item';
+    html.dataset.id = id;
+    html.innerHTML = `
+      <div class="time">${time}</div>
+      <div class="title">${title}</div>
+      <div class="content">${content}</div>
+    `;
+    html.querySelector('.content').addEventListener('click', () => html.querySelector('.content').classList.toggle('expanded'));
+    container.insertBefore(html, container.firstChild);
+  });
+}
+
+// 获取最新新闻
+async function loadNews() {
+  const url = 'https://api.allorigins.win/raw?url=https%3A%2F%2Fapi.zhitongcaijing.com%2Fv26%2Fsearch%2Fget_all.html%3Faccess_token%3D864af5d6a768f9267c7ddaeb15ba9504%26customized%3D1%26dev%3D0%26keyword%3D%2520%26mainland%3D1%26style%3Dnight%26token%3Db35da9d591f5bedadc9c0d622025f5e37f1b020c%26tradition_chinese%3D0%26version%3D4.9.7&_ts=' + Date.now();
+
+  try {
+    const res = await fetch(url, { cache: 'no-store' });
+    const json = await res.json();
+    const allLists = json.data?.list || [];
+    const flashNews = allLists.find(item => item.list_type === 'immediately');
+    const newsList = flashNews?.list || [];
+
+    const newNews = newsList.filter(item => {
+      const title = item.title?.trim() || '';
+      const content = item.content?.trim().slice(0, 20) || '';
+      const key = title + '|' + content;
+
+      // 已存在的新闻不处理
+      if (previousNewsKey.has(key)) return false;
+
+      // 标题包含过滤关键字则跳过
+      for (const kw of filterKeywords) {
+        if (title.includes(kw)) return false;
+      }
+
+      previousNewsKey.add(key);
+      return true;
+    });
+
+    if (newNews.length > 0) {
+      renderNewNews(newNews);
+
+      if (autoReadEnabled) {
+        newNews.forEach(item => {
+          const title = item.title || '[无标题]';
+          const content = item.content || '';
+          // 正文超过 40 字只取前 40 字，否则全文
+          const readContent = content.length > MAX_READ_LENGTH ? content.slice(0, MAX_READ_LENGTH) : content;
+          const text = title + '。' + readContent;
+          ttsQueue.push(text);
+        });
+      }
+    }
+  } catch (err) {
+    console.error('加载失败:', err);
+  }
+}
+
+// 快速朗读函数
+function fastReadLoop() {
+  if (!autoReadEnabled) return;
+
+  if (ttsQueue.length === 0) {
+    setTimeout(fastReadLoop, 1000); // 队列为空时等待
+    return;
+  }
+
+  const text = ttsQueue.shift();
+  if (!('speechSynthesis' in window)) return;
+
+  // 停止当前朗读
+  speechSynthesis.cancel();
+
+  const utter = new SpeechSynthesisUtterance(text);
+  const voices = speechSynthesis.getVoices();
+  const zhVoice = voices.find(v => /zh|cn/i.test(v.lang));
+  if (zhVoice) utter.voice = zhVoice;
+  utter.rate = 1;
+  utter.pitch = 1;
+
+  // 当朗读完自动进入下一条
+  utter.onend = () => {
+    setTimeout(fastReadLoop, 200); // 200ms 小间隔切换下一条
+  };
+
+  speechSynthesis.speak(utter);
+}
+
+// 启动自动朗读
+function enableAutoRead() {
+  if (!autoReadEnabled) {
+    autoReadEnabled = true;
+    document.getElementById('start-tips').style.display = 'none';
+    // 激活 TTS
+    const testUtter = new SpeechSynthesisUtterance('');
+    speechSynthesis.speak(testUtter);
+    loadNews();
+    fastReadLoop();
+  }
+}
+
+document.getElementById('start-tips').addEventListener('click', enableAutoRead);
+document.body.addEventListener('click', enableAutoRead, { once: true });
+
+// 定时轮询新闻
+setInterval(loadNews, 5000);
+</script>
+</body>
+</html>
